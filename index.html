@@ -1,0 +1,179 @@
+using UnityEngine;
+
+public enum CharacterType { Kumarn, Zeb }
+
+public class PlayerController : MonoBehaviour
+{
+    public CharacterType characterType;
+    [Header("Movement Settings")]
+    public float moveSpeed = 5f;
+    public float jumpForce = 7f;
+    
+    [Header("Abilities")]
+    public bool canSqueezeThroughCracks; // Dành riêng cho Kumarn
+    public Transform holdPosition;       // Vị trí cầm đồ vật để ném (đánh lạc hướng)
+
+    private Rigidbody2D rb;
+    private bool isGrounded;
+    public Transform groundCheck;
+    public LayerMask groundLayer;
+
+    void Start()
+    {
+        rb = GetComponent<Rigidbody2D>();
+        if (characterType == CharacterType.Kumarn)
+        {
+            canSqueezeThroughCracks = true;
+        }
+    }
+
+    void Update()
+    {
+        float moveInput = Input.GetAxis("Horizontal");
+        rb.velocity = new Vector2(moveInput * moveSpeed, rb.velocity.y);
+
+        // Kiểm tra chạm đất
+        isGrounded = Physics2D.OverlapCircle(groundCheck.position, 0.2f, groundLayer);
+
+        if (Input.GetButtonDown("Jump") && isGrounded)
+        {
+            rb.velocity = new Vector2(rb.velocity.x, jumpForce);
+        }
+    }
+
+    // Xử lý chui qua khe hẹp (Dành cho Kumarn)
+    private void OnTriggerEnter2D(Collider2D collision)
+    {
+        if (collision.CompareTag("NarrowCrack") && characterType == CharacterType.Kumarn)
+        {
+            // Dịch chuyển Kumarn qua bên kia khe hẹp
+            Transform exitPoint = collision.GetComponent<CrackPass>().exitPoint;
+            transform.position = exitPoint.position;
+        }
+    }
+}using UnityEngine;
+
+public class DistractionObject : MonoBehaviour
+{
+    [Header("Distraction Settings")]
+    public float throwForce = 10f;
+    public float noiseRadius = 8f;
+    public LayerMask enemyLayer;
+
+    private bool isHeld = true;
+    private Rigidbody2D rb;
+
+    void Start()
+    {
+        rb = GetComponent<Rigidbody2D>();
+        rb.simulated = false; // Tắt vật lý khi đang nhặt
+    }
+
+    public void Throw(Vector2 direction)
+    {
+        isHeld = false;
+        transform.parent = null;
+        rb.simulated = true;
+        rb.AddForce(direction * throwForce, ForceMode2D.Impulse);
+    }
+
+    void OnCollisionEnter2D(Collision2D collision)
+    {
+        if (!isHeld)
+        {
+            MakeNoise();
+            // Có thể thêm hiệu ứng âm thanh va chạm ở đây
+        }
+    }
+
+    void MakeNoise()
+    {
+        // Phát hiện tất cả quái vật trong bán kính tiếng động
+        Collider2D[] enemies = Physics2D.OverlapCircleAll(transform.position, noiseRadius, enemyLayer);
+        foreach (Collider2D enemy in enemies)
+        {
+            MonsterAI monster = enemy.GetComponent<MonsterAI>();
+            if (monster != null)
+            {
+                // Gọi hàm điều hướng quái vật tới vị trí tiếng động
+                monster.InvestigateSound(transform.position);
+            }
+        }
+    }
+}using UnityEngine;
+
+public class CoOpSwitch : MonoBehaviour
+{
+    [Header("References")]
+    public GameObject doorToOpen;
+    public bool requiresContinuousHold = true; // True: Phải giữ liên tục, False: Nhấn là mở luôn
+
+    private bool isOpen = false;
+
+    private void OnTriggerStay2D(Collider2D collision)
+    {
+        // Kiểm tra xem nhân vật có đứng lên công tắc không
+        if (collision.CompareTag("Player"))
+        {
+            OpenDoor();
+        }
+    }
+
+    private void OnTriggerExit2D(Collider2D collision)
+    {
+        if (collision.CompareTag("Player") && requiresContinuousHold)
+        {
+            CloseDoor();
+        }
+    }
+
+    void OpenDoor()
+    {
+        if (!isOpen)
+        {
+            isOpen = true;
+            // Logic mở cửa (Ví dụ: dịch chuyển cánh cửa lên trên hoặc tắt Collider)
+            doorToOpen.SetActive(false);
+            Debug.Log("Cửa đã mở nhờ phối hợp đồng đội!");
+        }
+    }
+
+    void CloseDoor()
+    {
+        if (isOpen)
+        {
+            isOpen = false;
+            doorToOpen.SetActive(true);
+            Debug.Log("Cửa đã đóng lại do mất lực giữ!");
+        }
+    }
+}using UnityEngine;
+
+public class MonsterAI : MonoBehaviour
+{
+    public float moveSpeed = 3f;
+    private Vector2 targetPosition;
+    private bool isInvestigating = false;
+
+    void Update()
+    {
+        if (isInvestigating)
+        {
+            // Di chuyển tới vị trí tiếng động
+            transform.position = Vector2.MoveTowards(transform.position, targetPosition, moveSpeed * Time.deltaTime);
+
+            if (Vector2.Distance(transform.position, targetPosition) < 0.1f)
+            {
+                // Đã đến nơi, quay lại trạng thái tuần tra tuần hoàn
+                isInvestigating = false;
+            }
+        }
+    }
+
+    public void InvestigateSound(Vector2 soundPos)
+    {
+        targetPosition = soundPos;
+        isInvestigating = true;
+        Debug.Log("Quái vật đang hướng về phía có tiếng động!");
+    }
+}
